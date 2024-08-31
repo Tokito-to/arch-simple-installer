@@ -242,6 +242,11 @@ genfstab -U /mnt >> /mnt/etc/fstab
 		echo "sed -i \"/#PermitRootLogin prohibit-password/s/prohibit-password/yes/;s/^#//\" /etc/ssh/sshd_config"
 		echo "systemctl enable sshd"
 	fi
+
+	# Better support btrfs
+	if [[ "$FILESYSTEM" == "btrfs" ]]; then
+		echo pacman -S --noconfirm btrfs-progs
+	fi
 ) | arch-chroot /mnt
 
 pr "Arch-Linux base install complete."
