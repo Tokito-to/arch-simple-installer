@@ -1,26 +1,22 @@
 #!/usr/bin/env bash
 # Written by Draco (tytydraco @ GitHub)
+# Modified by Tokito
 
 # Exit on any error
 set -e
+clear
 
-err() {
-	echo -e " \e[91m*\e[39m $*"
-	exit 1
-}
+err() { echo -e " \e[91m*\e[39m $*" && exit 1; }
 
-prompt() {
-	echo -ne " \e[92m*\e[39m $*"
-}
+prompt() { echo -ne " \e[92m*\e[39m $*"; }
+
+pr () { echo -e "\e[92m$*\e[39m"; }
 
 # Check internet Connection
-if ! ping -c1 archlinux.org
-then
-	err "Connect to Internet & try again!"
-fi
+ping -c1 archlinux.org || err "Connect to Internet & try again!"
 
 # Configuration
-lsblk -o NAME,TYPE,SIZE,FSTYPE,MOUNTPOINTS
+lsblk -o NAME,TYPE,SIZE,FSTYPE,MOUNTPOINTS,LABEL
 
 prompt "Boot [/dev/sda#]: "
 read -r BOOT_EFI
@@ -30,18 +26,19 @@ prompt "Root [/dev/sda#]: "
 read -r ROOT
 [[ ! -b "$ROOT" ]] && err "Partition does not exist. Exiting."
 
-# Home Partition setup
+# Home Partition Configuration
 prompt "Seprate Home Partition [y/N]: "
 read -r HOME_REQUIRED
-if [[ "$HOME_REQUIRED" = "y" ]]
-then
+if [[ "$HOME_REQUIRED" == "y" ]]; then
 	prompt "Format Home Partition [y/N]: "
 	read -r FORMAT_HOME
-	[[ "$FORMAT_HOME" = "y" ]] && FORMAT_HOME=Yes || FORMAT_HOME=No
+	[[ "$FORMAT_HOME" == "y" ]] && FORMAT_HOME=Yes || FORMAT_HOME=No
 
 	prompt "Home [/dev/sda#]: "
 	read -r HOME_PARTITION
 	[[ ! -b "$HOME_PARTITION" ]] && err "Partition does not exist. Exiting."
+else
+	FORMAT_HOME=N/A HOME_PARTITION=No
 fi
 
 prompt "Filesystem [ext4]: "
@@ -49,14 +46,14 @@ read -r FILESYSTEM
 FILESYSTEM=${FILESYSTEM:-ext4}
 ! command -v mkfs."$FILESYSTEM" &> /dev/null && err "Filesystem type does not exist. Exiting."
 
-prompt "Timezone [Asia/Kolkata]: "
+prompt "Timezone (Optional, Auto-Detected Based on IP Address): "
 read -r TIMEZONE
-TIMEZONE=${TIMEZONE:-Asia/Kolkata}
+[[ -z "$TIMEZONE" ]] && TIMEZONE=$(curl --ipv4 -s ifconfig.co/json | awk -v RS=, '/"time_zone":/ {print $2}' | tr -d '"')
 [[ ! -f "/usr/share/zoneinfo/$TIMEZONE" ]] && err "/usr/share/zoneinfo/$TIMEZONE does not exist. Exiting."
 
-prompt "Mirror Country [India]: "
+prompt "Mirror Country (Optional, Auto-Detected Based on IP Address): "
 read -r COUNTRY
-COUNTRY=${COUNTRY:-India}
+[[ -z "$COUNTRY" ]] && COUNTRY=$(curl --ipv4 -s ifconfig.co/country)
 
 prompt "Hostname [archlinux]: "
 read -r HOSTNAME
@@ -88,61 +85,57 @@ prompt "Proceed? [y/N]: "
 read -r PROCEED
 [[ "$PROCEED" != "y" ]] && err "User chose not to proceed. Exiting."
 
+
+trap 'echo -e "\e[31mInstallation Failed!\e[39m"' ERR
+
 # Unmount for safety
-if [ "$HOME_REQUIRED" = "Yes" ]
-then
+if [[ "$HOME_REQUIRED" == "Yes" ]]; then
 	umount "$HOME_PARTITION" 2> /dev/null || true
 fi
 umount "$BOOT_EFI" 2> /dev/null || true
 umount "$ROOT" 2> /dev/null || true
- 
 
 # Timezone
 timedatectl set-ntp true
 
 # Formatting partitions
 #mkfs.fat -F 32 "$BOOT_EFI"
-if [[ $(blkid "$BOOT_EFI" | grep -o 'TYPE="[^"]*"' | awk -F '"' '{print $2}') != "vfat" ]]
-then
-	err "Unsupported Boot Partition: $BOOT_EFI. Exiting"
-fi
+[[ $(blkid "$BOOT_EFI" | grep -o 'TYPE="[^"]*"' | awk -F '"' '{print $2}') == "vfat" ]] || err "Unsupported Boot Partition: $BOOT_EFI. Exiting"
 
-echo "Formating Root Partition: $ROOT"
+pr "Formating Root Partition: $ROOT"
 yes | mkfs."$FILESYSTEM" "$ROOT"
 
-if [ "$FORMAT_HOME" = "Yes" ]
-then
+if [[ "$FORMAT_HOME" == "Yes" ]]; then
 	echo "Formating Home Partition: $HOME_PARTITION"
 	yes | mkfs."$FILESYSTEM" "$HOME_PARTITION"
 fi
 
 # Mount our new partition #Delay to avoid race condition
-echo "Mounting Root: $ROOT..."
+pr "Mounting Root: $ROOT To /mnt"
 mount "$ROOT" /mnt
 sleep 3
 
-if [ "$HOME_REQUIRED" = "y" ]
-then
-	echo "Mounting Home: $HOME_PARTITION..."
-  mount --mkdir "$HOME_PARTITION" /mnt/home
+if [[ "$HOME_REQUIRED" == "y" ]]; then
+	pr "Mounting Home: $HOME_PARTITION To /mnt/home"
+	mount --mkdir "$HOME_PARTITION" /mnt/home
 	sleep 3
 fi
 
-echo "Mounting Boot: $BOOT_EFI..."
+pr "Mounting Boot: $BOOT_EFI To /mnt/boot"
 mount --mkdir "$BOOT_EFI" /mnt/boot
 sleep 3
 
 # Update Mirrors
 pacman -Syy #Force Update Current Package Repo
-echo "Backup Current Mirrorlist"
+pr "Backup Current Mirrorlist"
 cp -v /etc/pacman.d/mirrorlist /etc/pacman.d/mirrorlist.bak
 
-echo "Updating Mirrors"
-reflector --save /etc/pacman.d/mirrorlist --country "$COUNTRY" --sort rate --latest 20 --verbose
+pr "Updating Mirrors"
+reflector --age 48 --country "$COUNTRY" --latest 20 --fastest 5 --save /etc/pacman.d/mirrorlist --verbose
 
 # Enable Parallel downloading
-sed -i "s/#ParallelDownloads = 5/ParallelDownloads = 4/" /etc/pacman.conf
-sed -i "/Color/"'s/^#//' /etc/pacman.conf
+sed -i "/#ParallelDownloads = /s/#//;s/5/4/" /etc/pacman.conf
+sed -i "/Color/s/^#//" /etc/pacman.conf
 
 # Initialize base system, kernel, and firmware
 pacstrap -K /mnt base linux linux-firmware
@@ -157,7 +150,7 @@ genfstab -U /mnt >> /mnt/etc/fstab
 	echo "hwclock --systohc"
 
 	# Setup locales
-	echo "sed -i \"s/#en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/\" /etc/locale.gen"
+	echo "sed -i \"/en_US.UTF-8/s/^#//\" /etc/locale.gen"
 	echo "locale-gen"
 	echo "echo \"LANG=en_US.UTF-8\" > /etc/locale.conf"
 
@@ -169,31 +162,30 @@ genfstab -U /mnt >> /mnt/etc/fstab
 	echo "echo -e \"$PASSWORD\n$PASSWORD\" | passwd"
 
 	# Install microcode
-	echo "pacman -Sy --noconfirm amd-ucode intel-ucode"
-
-	# Install GRUBv2 as a removable drive (universal across hw)
-	echo "pacman -Sy --noconfirm grub efibootmgr"
+	case $(lscpu | grep -oE "GenuineIntel|AuthenticAMD") in
+		"GenuineIntel") echo "pacman -S --noconfirm intel-ucode" ;;
+		"AuthenticAMD") echo "pacman -S --noconfirm amd-ucode" ;;
+	esac
 
 	# Install GRUBv2
-	echo "pacman -Sy --noconfirm --needed grub efibootmgr"
-	echo "grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=\"ArchLinux\" --recheck"
+	echo "pacman -S --noconfirm grub efibootmgr"
+	echo "grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=\"Arch Linux\" --recheck"
 	echo "grub-mkconfig -o /boot/grub/grub.cfg"
 
 	# Install and enable NetworkManager on boot
-	echo "pacman -Sy --noconfirm networkmanager iwd"
+	echo "pacman -S --noconfirm networkmanager iwd"
 	echo "systemctl enable NetworkManager"
-	
+
 	# Launch Bluetoothd on boot
-	echo "pacman -Sy --noconfirm --needed bluez"
+	echo "pacman -S --noconfirm bluez"
 	echo "systemctl enable bluetooth"
 
 	# Enable SSH server out of the box
-	if [[ "$SSH" == "yes" ]]
-	then
-		echo "pacman -Sy --noconfirm openssh"
-		echo "sed -i \"s/#PermitRootLogin prohibit-password/PermitRootLogin yes/\" /etc/ssh/sshd_config"
+	if [[ "$SSH" == "yes" ]]; then
+		echo "pacman -S --noconfirm openssh"
+		echo "sed -i \"/#PermitRootLogin prohibit-password/s/prohibit-password/yes/;s/^#//\" /etc/ssh/sshd_config"
 		echo "systemctl enable sshd"
 	fi
 ) | arch-chroot /mnt
 
-echo "Basic ArchLinux Install completed."
+pr "Arch-Linux base install complete."
