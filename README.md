@@ -14,7 +14,7 @@
 - [archfi](https://github.com/MatMoul/archfi): Bloated, large final install, lots of steps.
 - [aui](https://github.com/helmuthdu/aui): Manual partitioning, over complicated, requires `unzip` package.
 - [alis](https://picodotdev.github.io/alis/): Massive configuration file, does far more than the bare minimum.
-- arch-simple-installer: Manual partitioning, only 10 manual configs, bare minimum install.
+- arch-simple-installer: Automatic partitioning or Manual partitioning, only 11 manual configs, bare minimum install.
 
 # Usage
 1. Boot Arch Linux live image

@@ -16,29 +16,59 @@ pr () { echo -e "\e[92m$*\e[39m"; }
 ping -c1 archlinux.org || err "Connect to Internet & try again!"
 
 # Configuration
+dmesg | grep -Fq "EFI v" && FIRMWARE=UEFI || FIRMWARE=BIOS
+
 lsblk -o NAME,TYPE,SIZE,FSTYPE,MOUNTPOINTS,LABEL
 
-prompt "Boot [/dev/sda#]: "
-read -r BOOT_EFI
-[[ ! -b "$BOOT_EFI" ]] && err "Partition does not exist. Exiting."
+prompt "Automatic Partitioning [y/N]: "
+read -r "AUTO"
+AUTO=${AUTO:-N}
+[[ "$AUTO" == "y" ]] && AUTO=Yes || AUTO=No
 
-prompt "Root [/dev/sda#]: "
-read -r ROOT
-[[ ! -b "$ROOT" ]] && err "Partition does not exist. Exiting."
+# Automatic Partitioning Configuration
+if [[ "$AUTO" == Yes ]]; then
+	prompt "Disk [/dev/sda]: "
+	read -r DISKPATH
+	DISKPATH=${DISKPATH:-/dev/sda}
+	[[ ! -b "$DISKPATH" ]] && err "Disk does not exist. Exiting."
 
-# Home Partition Configuration
-prompt "Seprate Home Partition [y/N]: "
-read -r HOME_REQUIRED
-if [[ "$HOME_REQUIRED" == "y" ]]; then
-	prompt "Format Home Partition [y/N]: "
-	read -r FORMAT_HOME
-	[[ "$FORMAT_HOME" == "y" ]] && FORMAT_HOME=Yes || FORMAT_HOME=No
-
-	prompt "Home [/dev/sda#]: "
-	read -r HOME_PARTITION
-	[[ ! -b "$HOME_PARTITION" ]] && err "Partition does not exist. Exiting."
+	# Setup partition variables
+	if [[ "$FIRMWARE" == "UEFI" ]]; then
+		BOOT_EFI="${DISKPATH}1" ROOT="${DISKPATH}2";
+	elif [[ "$FIRMWARE" == "BIOS" ]]; then
+		BOOT_EFI="${DISKPATH}2" ROOT="${DISKPATH}3";
+	fi
+	FORMAT_HOME=N/A HOME_PARTITION=No;
 else
-	FORMAT_HOME=N/A HOME_PARTITION=No
+	# Manual Partitioning Configuration
+	prompt "Boot [/dev/sda#]: "
+	read -r BOOT_EFI
+	[[ ! -b "$BOOT_EFI" ]] && err "Partition does not exist. Exiting."
+
+	if [[ "$BOOT_EFI" =~ "nvme" ]]; then
+		DISKPATH=${BOOT_EFI//p[0-9]/}
+	else
+		DISKPATH=${BOOT_EFI//[0-9]/}
+	fi
+
+	prompt "Root [/dev/sda#]: "
+	read -r ROOT
+	[[ ! -b "$ROOT" ]] && err "Partition does not exist. Exiting."
+
+	# Home Partition Configuration
+	prompt "Seprate Home Partition [y/N]: "
+	read -r HOME_REQUIRED
+	if [[ "$HOME_REQUIRED" == "y" ]]; then
+		prompt "Format Home Partition [y/N]: "
+		read -r FORMAT_HOME
+		[[ "$FORMAT_HOME" == "y" ]] && FORMAT_HOME=Yes || FORMAT_HOME=No
+
+		prompt "Home [/dev/sda#]: "
+		read -r HOME_PARTITION
+		[[ ! -b "$HOME_PARTITION" ]] && err "Partition does not exist. Exiting."
+	else
+		FORMAT_HOME=N/A HOME_PARTITION=No
+	fi
 fi
 
 prompt "Filesystem [ext4]: "
@@ -70,6 +100,9 @@ PASSWORD=${PASSWORD:-root}
 echo ""
 echo ""
 printf "%-16s\t%-16s\n" "CONFIGURATION" "VALUE"
+printf "%-16s\t%-16s\n" "Firmware:" "$FIRMWARE"
+printf "%-16s\t%-16s\n" "Automatic Partitioning:" "$AUTO"
+printf "%-16s\t%-16s\n" "Disk:" "$DISKPATH"
 printf "%-16s\t%-16s\n" "Root & Home Filesystem:" "$FILESYSTEM"
 printf "%-16s\t%-16s\n" "Boot Partition [EFI]:" "$BOOT_EFI"
 printf "%-16s\t%-16s\n" "Root Partition:" "$ROOT"
@@ -80,6 +113,9 @@ printf "%-16s\t%-16s\n" "Mirror Country:" "$COUNTRY"
 printf "%-16s\t%-16s\n" "Hostname:" "$HOSTNAME"
 printf "%-16s\t%-16s\n" "Password:" "$(echo "$PASSWORD" | sed 's/./*/g')"
 printf "%-16s\t%-16s\n" "SSH:" "$SSH"
+echo ""
+echo -e "\e[31mWarning!:\e[39m Automatic Partitioning Will Wipe Disk"
+fdisk -l --color=always "$DISKPATH"
 echo ""
 prompt "Proceed? [y/N]: "
 read -r PROCEED
@@ -98,16 +134,32 @@ umount "$ROOT" 2> /dev/null || true
 # Timezone
 timedatectl set-ntp true
 
+# Partitioning
+if [[ "$AUTO" == "Yes" ]]; then
+	sgdisk -Z "${DISKPATH}" # zap all on disk
+	sgdisk -a 2048 -o "${DISKPATH}" # new gpt disk 2048 alignment
+	if [[ "$FIRMWARE" == "UEFI" ]]; then
+		sgdisk -n 1::+1G --typecode=1:ef00 --change-name=1:'EFIBOOT' "${DISKPATH}"
+		sgdisk -n 2::-0 --typecode=2:8300 --change-name=2:'ROOT' "${DISKPATH}"
+	elif [[ "$FIRMWARE" == "BIOS" ]]; then
+		sgdisk -n 1::+1M --typecode=1:ef02 --change-name=1:'BIOS' "${DISKPATH}"
+		sgdisk -n 2::+1G --typecode=2:ef00 --change-name=2:'EFIBOOT' "${DISKPATH}"
+		sgdisk -n 3::-0 --typecode=3:8300 --change-name=3:'ROOT' "${DISKPATH}"
+		sgdisk -A 1:set:2 "${DISKPATH}"
+	fi
+	partprobe "${DISKPATH}"
+fi
+
 # Formatting partitions
-#mkfs.fat -F 32 "$BOOT_EFI"
-[[ $(blkid "$BOOT_EFI" | grep -o 'TYPE="[^"]*"' | awk -F '"' '{print $2}') == "vfat" ]] || err "Unsupported Boot Partition: $BOOT_EFI. Exiting"
+pr "Formating Boot Partition: $BOOT_EFI"
+yes | mkfs.fat -F 32 "$BOOT_EFI" -n "Boot"
 
 pr "Formating Root Partition: $ROOT"
-yes | mkfs."$FILESYSTEM" "$ROOT"
+yes | mkfs."$FILESYSTEM" "$ROOT" -L "Root"
 
 if [[ "$FORMAT_HOME" == "Yes" ]]; then
-	echo "Formating Home Partition: $HOME_PARTITION"
-	yes | mkfs."$FILESYSTEM" "$HOME_PARTITION"
+	pr "Formating Home Partition: $HOME_PARTITION"
+	yes | mkfs."$FILESYSTEM" "$HOME_PARTITION" -L "Home"
 fi
 
 # Mount our new partition #Delay to avoid race condition
@@ -169,7 +221,11 @@ genfstab -U /mnt >> /mnt/etc/fstab
 
 	# Install GRUBv2
 	echo "pacman -S --noconfirm grub efibootmgr"
-	echo "grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=\"Arch Linux\" --recheck"
+	if [[ "$FIRMWARE" == "BIOS" ]]; then
+		echo "grub-install --target=i386-pc \"$DISKPATH\" --recheck"
+	elif [[ "$FIRMWARE" == "UEFI" ]]; then
+		echo "grub-install --target=x86_64-efi --efi-directory=/boot --bootloader-id=\"Arch Linux\" --recheck"
+	fi
 	echo "grub-mkconfig -o /boot/grub/grub.cfg"
 
 	# Install and enable NetworkManager on boot
