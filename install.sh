@@ -114,13 +114,25 @@ printf "%-16s\t%-16s\n" "Hostname:" "$HOSTNAME"
 printf "%-16s\t%-16s\n" "Password:" "$(echo "$PASSWORD" | sed 's/./*/g')"
 printf "%-16s\t%-16s\n" "SSH:" "$SSH"
 echo ""
-echo -e "\e[31mWarning!:\e[39m Automatic Partitioning Will Wipe Disk"
-fdisk -l --color=always "$DISKPATH"
+ if [[ "$AUTO" == "Yes" ]]; then
+	echo -e "\e[31mWarning!:\e[39m Automatic Partitioning Will Wipe Disk"
+	fdisk -l --color=always "$DISKPATH"
+elif [[ "$HOME_REQUIRED" == "y" ]]; then
+	echo -e "\e[31mWarning!:\e[39m The Following Partitions Will Be Wiped:"
+	for Partition in $BOOT_EFI $ROOT $HOME_PARTITION; do
+		fdisk -l --color=always "$Partition" && df -h  "$Partition"
+		echo ""
+	done
+else
+	for Partition in $BOOT_EFI $ROOT; do
+		fdisk -l --color=always "$Partition" && df -h  "$Partition"
+		echo ""
+	done
+fi
 echo ""
 prompt "Proceed? [y/N]: "
 read -r PROCEED
 [[ "$PROCEED" != "y" ]] && err "User chose not to proceed. Exiting."
-
 
 trap 'echo -e "\e[31mInstallation Failed!\e[39m"' ERR
 
