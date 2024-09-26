@@ -212,6 +212,7 @@ genfstab -U /mnt >> /mnt/etc/fstab
 	# Time and date configuration
 	echo "ln -sf /usr/share/zoneinfo/$TIMEZONE /etc/localtime"
 	echo "hwclock --systohc"
+	echo "systemctl enable systemd-timesyncd"
 
 	# Setup locales
 	echo "sed -i \"/en_US.UTF-8/s/^#//\" /etc/locale.gen"
