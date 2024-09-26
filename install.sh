@@ -245,16 +245,18 @@ genfstab -U /mnt >> /mnt/etc/fstab
 	echo "pacman -S --noconfirm networkmanager iwd"
 	echo "systemctl enable NetworkManager"
 
+	# Install FileSystems Utilities
+	case "$FILESYSTEM" in
+		btrfs) echo "pacman -S --noconfirm btrfs-progs" ;;
+		bcachefs) echo "pacman -S --noconfirm bcachefs-tools" ;;
+		xfs) echo "pacman -S --noconfirm xfsprogs" ;;
+	esac
+
 	# Enable SSH server out of the box
 	if [[ "$SSH" == "yes" ]]; then
 		echo "pacman -S --noconfirm openssh"
 		echo "sed -i \"/#PermitRootLogin prohibit-password/s/prohibit-password/yes/;s/^#//\" /etc/ssh/sshd_config"
 		echo "systemctl enable sshd"
-	fi
-
-	# Better support btrfs
-	if [[ "$FILESYSTEM" == "btrfs" ]]; then
-		echo pacman -S --noconfirm btrfs-progs
 	fi
 ) | arch-chroot /mnt
 
