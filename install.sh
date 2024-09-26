@@ -244,10 +244,6 @@ genfstab -U /mnt >> /mnt/etc/fstab
 	echo "pacman -S --noconfirm networkmanager iwd"
 	echo "systemctl enable NetworkManager"
 
-	# Launch Bluetoothd on boot
-	echo "pacman -S --noconfirm bluez"
-	echo "systemctl enable bluetooth"
-
 	# Enable SSH server out of the box
 	if [[ "$SSH" == "yes" ]]; then
 		echo "pacman -S --noconfirm openssh"
