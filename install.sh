@@ -224,6 +224,7 @@ genfstab -U /mnt >> /mnt/etc/fstab
     echo "sed -i \"/en_US.UTF-8/s/^#//\" /etc/locale.gen"
     echo "locale-gen"
     echo "echo \"LANG=en_US.UTF-8\" > /etc/locale.conf"
+    echo "echo \"KEYMAP=us\" >> /etc/vconsole.conf"
 
     # Setup hostname and hosts file
     echo "echo \"$HOSTNAME\" > /etc/hostname"
