@@ -2,15 +2,19 @@
 # Written by Draco (tytydraco @ GitHub)
 # Modified by Tokito
 
+clear
+
 # Exit on any error
 set -e
-clear
+
+# Functions
+prompt() { echo -ne " \e[92m*\e[39m $*"; }
 
 err() { echo -e " \e[91m*\e[39m $*" && exit 1; }
 
-prompt() { echo -ne " \e[92m*\e[39m $*"; }
+warn() { echo -e " \e[91mWarning!:\e[39m $*"; }
 
-pr () { echo -e "\e[92m$*\e[39m"; }
+pr () { echo -e " \e[92m$*\e[39m"; }
 
 # Check internet Connection
 ping -c1 archlinux.org || err "Connect to Internet & try again!"
@@ -111,15 +115,15 @@ printf "%-16s\t%-16s\n" "Format Home Partition:" "$FORMAT_HOME"
 printf "%-16s\t%-16s\n" "Timezone:" "$TIMEZONE"
 printf "%-16s\t%-16s\n" "Mirror Country:" "$COUNTRY"
 printf "%-16s\t%-16s\n" "Hostname:" "$HOSTNAME"
-printf "%-16s\t%-16s\n" "Password:" "$(echo "$PASSWORD" | sed 's/./*/g')"
+printf "%-16s\t%-16s\n" "Password:" "${PASSWORD//?/*}"
 printf "%-16s\t%-16s\n" "SSH:" "$SSH"
 echo ""
 
  if [[ "$AUTO" == "Yes" ]]; then
-    echo -e "\e[31mWarning!:\e[39m Automatic Partitioning Will Wipe Disk"
+    warn "Automatic Partitioning Will Wipe Disk"
     fdisk -l --color=always "$DISKPATH"
 elif [[ "$HOME_REQUIRED" == "y" ]]; then
-    echo -e "\e[31mWarning!:\e[39m The Following Partitions Will Be Wiped:"
+    warn "The Following Partitions Will Be Wiped:"
     for Partition in $BOOT_EFI $ROOT $HOME_PARTITION; do
         fdisk -l --color=always "$Partition" && df -h  "$Partition"
         echo ""
@@ -209,6 +213,7 @@ pacstrap -K /mnt base linux linux-firmware
 genfstab -U /mnt >> /mnt/etc/fstab
 
 # Chroot commands
+# shellcheck disable=SC2028
 (
     # Time and date configuration
     echo "ln -sf /usr/share/zoneinfo/$TIMEZONE /etc/localtime"
@@ -262,3 +267,4 @@ genfstab -U /mnt >> /mnt/etc/fstab
 ) | arch-chroot /mnt
 
 pr "Arch-Linux base install complete."
+
