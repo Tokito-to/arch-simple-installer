@@ -87,6 +87,19 @@ read -r TIMEZONE
 
 prompt "Mirror Country (Optional, Auto-Detected Based on IP Address): "
 read -r COUNTRY
+COUNTRY_LIST="$(reflector --list-countries | awk -F ' {2,}' 'NR > 2 {print $1}')"
+COUNTRY_LIST_ISO="$(reflector --list-countries | awk -F ' {2,}' 'NR > 2 {print $2}')"
+if [[ -n "$COUNTRY" ]]; then
+    if echo "${COUNTRY}" | grep -E -q '^[A-Z]{2}$'; then
+        LIST="${COUNTRY_LIST_ISO}"
+    else
+        LIST="${COUNTRY_LIST}"
+    fi
+
+    if ! echo "$LIST" | grep -Fxo -q "${COUNTRY}"; then
+        err "${COUNTRY}: Invalid Mirror Country. Exiting."
+    fi
+fi
 [[ -z "$COUNTRY" ]] && COUNTRY=$(curl --ipv4 -s ifconfig.co/country)
 
 prompt "Hostname [archlinux]: "
