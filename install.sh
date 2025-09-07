@@ -213,7 +213,7 @@ pr "Backup Current Mirrorlist"
 cp -v /etc/pacman.d/mirrorlist /etc/pacman.d/mirrorlist.bak
 
 pr "Updating Mirrors"
-reflector --age 48 --country "$COUNTRY" --latest 20 --fastest 5 --save /etc/pacman.d/mirrorlist --verbose
+reflector --age 24 --country "$COUNTRY" --protocol https --latest 20 --fastest 5 --save /etc/pacman.d/mirrorlist --verbose
 
 # Enable Parallel downloading
 sed -i "/#ParallelDownloads = /s/#//;s/5/4/" /etc/pacman.conf
