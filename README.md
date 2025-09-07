@@ -21,6 +21,7 @@
 2. Connect to the internet
 
 ```console
-$ curl -Lo installer bit.ly/3VVIPDu
+$ curl -Lo installer bit.ly/ArchIQ
 $ bash installer`
 ```
+
