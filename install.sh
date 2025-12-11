@@ -132,7 +132,7 @@ printf "%-16s\t%-16s\n" "Password:" "${PASSWORD//?/*}"
 printf "%-16s\t%-16s\n" "SSH:" "$SSH"
 echo ""
 
- if [[ "$AUTO" == "Yes" ]]; then
+if [[ "$AUTO" == "Yes" ]]; then
     warn "Automatic Partitioning Will Wipe Disk"
     fdisk -l --color=always "$DISKPATH"
 elif [[ "$HOME_REQUIRED" == "y" ]]; then
